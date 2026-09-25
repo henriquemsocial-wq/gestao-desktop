@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Plus, Search, X, FileText, Trash2, ShoppingCart, Edit, FileDown } from 'lucide-react';
 import { readCSV, writeCSV } from '../core/csvService';
 import { Orcamento, Cliente, Produto } from '../core/types';
@@ -40,9 +40,9 @@ export default function Orcamentos() {
 
   // Quando o usuário seleciona um produto, puxa o preço padrão dele para o campo editável
   useEffect(() => {
-    const prod = produtos.find(p => p.id?.toString() === produtoSelecionado?.toString());
+    const prod = produtos.find(p => String(p.id) === String(produtoSelecionado));
     if (prod) {
-      setPrecoEditavel(Number(prod.preco));
+      setPrecoEditavel(Number(prod.preco) || 0);
     } else {
       setPrecoEditavel(0);
     }
@@ -63,19 +63,28 @@ export default function Orcamentos() {
   };
 
   const getNomeCliente = (id: string) => {
-    const cliente = clientes.find(c => c.id?.toString() === id?.toString());
+    if (!id) return 'Cliente não informado';
+    const cliente = clientes.find(c => String(c.id) === String(id));
     return cliente ? cliente.nome : 'Cliente não encontrado';
   };
 
-  const orcamentosFiltrados = orcamentos.filter(o => 
-    o.numero?.toString().includes(busca) ||
-    getNomeCliente(o.cliente_id).toLowerCase().includes(busca.toLowerCase())
-  );
+  // Lógica Otimizada e Segura de Filtros (Impede quebras se os dados estiverem vazios)
+  const orcamentosFiltrados = useMemo(() => {
+    return orcamentos.filter(o => {
+      const termoBusca = String(busca || '').toLowerCase();
+      const numeroOrc = String(o.numero || '').toLowerCase();
+      const nomeCli = String(getNomeCliente(o.cliente_id) || '').toLowerCase();
+      
+      return numeroOrc.includes(termoBusca) || nomeCli.includes(termoBusca);
+    }).sort((a, b) => {
+      // Ordena mostrando os orçamentos mais recentes primeiro
+      return new Date(b.data).getTime() - new Date(a.data).getTime();
+    });
+  }, [orcamentos, busca, clientes]);
 
   // --- LÓGICA DO CARRINHO ---
   const adicionarAoCarrinho = () => {
-    // Correção do bug: convertendo ambos para string para garantir a comparação
-    const prod = produtos.find(p => p.id?.toString() === produtoSelecionado?.toString());
+    const prod = produtos.find(p => String(p.id) === String(produtoSelecionado));
     
     if (!prod || quantidade <= 0) {
       alert("Selecione um produto e informe uma quantidade válida.");
@@ -83,10 +92,10 @@ export default function Orcamentos() {
     }
 
     const novoItem: ItemCarrinho = {
-      produtoId: prod.id.toString(),
+      produtoId: String(prod.id),
       nome: prod.nome,
       quantidade: Number(quantidade),
-      precoUnitario: Number(precoEditavel), // Usa o preço que o usuário digitou/editou
+      precoUnitario: Number(precoEditavel),
       subtotal: Number(precoEditavel) * Number(quantidade)
     };
 
@@ -115,7 +124,7 @@ export default function Orcamentos() {
 
   const abrirModalEditar = (orc: Orcamento) => {
     setOrcamentoEditando(orc.numero);
-    setClienteSelecionado(orc.cliente_id?.toString());
+    setClienteSelecionado(orc.cliente_id ? String(orc.cliente_id) : '');
     setObservacao(orc.observacao || '');
     
     try {
@@ -132,7 +141,7 @@ export default function Orcamentos() {
   const alterarStatus = async (numeroOrcamento: string, novoStatus: string) => {
     const novaLista = orcamentos.map(orc => {
       if (orc.numero === numeroOrcamento) {
-        return { ...orc, status: novoStatus as any };
+        return { ...orc, status: novoStatus } as Orcamento;
       }
       return orc;
     });
@@ -172,7 +181,7 @@ export default function Orcamentos() {
         numero: `ORC-${Math.floor(Date.now() / 1000)}`,
         cliente_id: clienteSelecionado,
         data: new Date().toISOString().split('T')[0],
-        status: 'Rascunho', // Status padrão na criação
+        status: 'Rascunho' as any,
         total: valorTotalCarrinho,
         itens: JSON.stringify(carrinho),
         observacao: observacao
@@ -192,7 +201,7 @@ export default function Orcamentos() {
 
   // --- GERAR PDF ---
   const gerarPDF = (orc: Orcamento) => {
-    const cliente = clientes.find(c => c.id?.toString() === orc.cliente_id?.toString());
+    const cliente = clientes.find(c => String(c.id) === String(orc.cliente_id));
     let itens: ItemCarrinho[] = [];
     try { itens = orc.itens ? JSON.parse(orc.itens) : []; } catch (e) {}
 
@@ -202,8 +211,11 @@ export default function Orcamentos() {
     doc.text('ORÇAMENTO', 14, 22);
     doc.setFontSize(10);
     doc.text(`Número: ${orc.numero}`, 14, 30);
-    doc.text(`Data: ${new Date(orc.data).toLocaleDateString('pt-BR')}`, 14, 35);
-    doc.text(`Status: ${orc.status}`, 14, 40);
+    
+    // Formatação de data segura para o PDF
+    const dataFormatada = orc.data ? orc.data.split('-').reverse().join('/') : '-';
+    doc.text(`Data: ${dataFormatada}`, 14, 35);
+    doc.text(`Status: ${orc.status || 'Não definido'}`, 14, 40);
 
     doc.setFontSize(12);
     doc.text('Dados do Cliente', 14, 55);
@@ -239,14 +251,20 @@ export default function Orcamentos() {
       doc.text(orc.observacao, 14, finalY + 37, { maxWidth: 180 });
     }
 
-    doc.save(`${orc.numero}.pdf`);
+    doc.save(`${orc.numero || 'orcamento'}.pdf`);
   };
 
   const formatarMoeda = (valor: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor || 0);
   };
 
-  // Define a cor do dropdown de status na tabela
+  // Formatar a data para a tabela
+  const formatarDataTabela = (dataString: string) => {
+    if (!dataString) return '-';
+    // O split/reverse/join previne o erro de fuso horário ao mostrar a data local
+    return dataString.split('-').reverse().join('/');
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Aprovado': return 'bg-green-100 text-green-800 border-green-200';
@@ -300,8 +318,8 @@ export default function Orcamentos() {
               ) : orcamentosFiltrados.length === 0 ? (
                 <tr><td colSpan={6} className="p-8 text-center text-slate-500">Nenhum orçamento encontrado.</td></tr>
               ) : (
-                orcamentosFiltrados.map((orc) => (
-                  <tr key={orc.numero} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                orcamentosFiltrados.map((orc, index) => (
+                  <tr key={orc.numero || index} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                     <td className="p-4 flex items-center gap-3">
                       <div className="w-8 h-8 rounded bg-blue-50 flex items-center justify-center text-blue-600 shrink-0 border border-blue-100">
                         <FileText size={16} />
@@ -309,7 +327,7 @@ export default function Orcamentos() {
                       <span className="font-medium text-slate-800">{orc.numero}</span>
                     </td>
                     <td className="p-4 text-slate-600">{getNomeCliente(orc.cliente_id)}</td>
-                    <td className="p-4 text-slate-600">{new Date(orc.data).toLocaleDateString('pt-BR')}</td>
+                    <td className="p-4 text-slate-600">{formatarDataTabela(orc.data)}</td>
                     <td className="p-4">
                       {/* DROPDOWN DE STATUS NA LINHA DA TABELA */}
                       <select 
@@ -374,36 +392,42 @@ export default function Orcamentos() {
                 {/* ADICIONAR PRODUTOS COM PREÇO EDITÁVEL */}
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">Adicionar Produtos</label>
-                  <div className="flex flex-wrap sm:flex-nowrap gap-2">
-                    <select value={produtoSelecionado} onChange={(e) => setProdutoSelecionado(e.target.value)} className="flex-1 min-w-[200px] p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-                      <option value="">Selecione um produto...</option>
-                      {produtos.map(p => (
-                        <option key={p.id} value={p.id}>{p.nome}</option>
-                      ))}
-                    </select>
+                  <div className="flex flex-wrap sm:flex-nowrap gap-2 items-end">
+                    <div className="flex-1 min-w-[200px]">
+                      <select value={produtoSelecionado} onChange={(e) => setProdutoSelecionado(e.target.value)} className="w-full p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                        <option value="">Selecione um produto...</option>
+                        {produtos.map(p => (
+                          <option key={p.id} value={p.id}>{p.nome}</option>
+                        ))}
+                      </select>
+                    </div>
                     
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-slate-500">R$</span>
-                      <input 
-                        type="number" 
-                        step="0.01"
-                        min="0"
-                        value={precoEditavel} 
-                        onChange={(e) => setPrecoEditavel(Number(e.target.value))}
-                        className="w-24 p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none"
-                        title="Preço Unitário"
-                      />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-slate-500">R$</span>
+                        <input 
+                          type="number" 
+                          step="0.01"
+                          min="0"
+                          value={precoEditavel} 
+                          onChange={(e) => setPrecoEditavel(Number(e.target.value))}
+                          className="w-24 p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none"
+                          title="Preço Unitário"
+                        />
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-slate-500">Qtd:</span>
-                      <input 
-                        type="number" 
-                        min="1" 
-                        value={quantidade} 
-                        onChange={(e) => setQuantidade(Number(e.target.value))}
-                        className="w-20 p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none"
-                      />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-slate-500">Qtd:</span>
+                        <input 
+                          type="number" 
+                          min="1" 
+                          value={quantidade} 
+                          onChange={(e) => setQuantidade(Number(e.target.value))}
+                          className="w-20 p-2.5 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-500 outline-none"
+                        />
+                      </div>
                     </div>
 
                     <button type="button" onClick={adicionarAoCarrinho} className="bg-slate-800 hover:bg-slate-900 text-white px-6 py-2.5 rounded-lg font-medium transition-colors">

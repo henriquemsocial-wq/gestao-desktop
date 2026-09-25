@@ -8,7 +8,7 @@ export default defineConfig(async () => ({
   // Mantém as configurações de porta que o Tauri precisa
   clearScreen: false,
   server: {
-    port: 1420,
+    port: 1421,
     strictPort: true,
     watch: {
       ignored: ['**/src-tauri/**'],

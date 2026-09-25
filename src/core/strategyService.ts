@@ -1,4 +1,4 @@
-import { readTextFile, writeTextFile, exists, mkdir, BaseDirectory } from '@tauri-apps/plugin-fs';
+import { readTextFile, writeTextFile, exists, BaseDirectory } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 
 const APP_FOLDER = 'GestaoDesktopData';

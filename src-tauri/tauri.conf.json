@@ -4,18 +4,40 @@
   "version": "0.1.0",
   "identifier": "com.gestao.desktop",
   "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1421",
     "frontendDist": "../dist"
   },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
   "app": {
+    "windows": [
+      {
+        "title": "Gestão Desktop",
+        "width": 1200,
+        "height": 800,
+        "visible": true
+      }
+    ],
     "security": {
       "csp": null
     }
   },
   "plugins": {
     "updater": {
-      "pubkey": "COLE_AQUI_SUA_CHAVE_PUBLICA_COMPLETA_GERADA_NO_PASSO_1",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJCMEM1QkNCNzU5NUFEQ0EKUldUS3JaVjF5MXNNdTBjVDByKy9tNGF1Z3FXYzF1TGR0WCttTWdDYkdkN0ZEa25WZlpGZ0I3NHEK",
       "endpoints": [
-        "https://github.com/Shenriquemsocial-wq/SEU_REPOSITORIO/releases/latest/download/latest.json"
+        "https://github.com/Shenriquemsocial-wq/gestao-desktop/releases/latest/download/latest.json"
       ]
     }
   }
